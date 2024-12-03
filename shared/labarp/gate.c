@@ -74,71 +74,69 @@ int main(int argc, char *argv[])
     fd_set readfds;
     int max_sd;
 
-    while (1)
+    // Preparar el conjunto de descriptores de archivo para `select`
+    FD_ZERO(&readfds);
+    FD_SET(sockfdA, &readfds);
+    FD_SET(sockfdB, &readfds);
+
+    // Establecer el descriptor máximo
+    max_sd = (sockfdA > sockfdB) ? sockfdA : sockfdB;
+
+    // Usar `select` para esperar datos en ambos sockets
+    int activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+    if (activity < 0)
     {
-        // Preparar el conjunto de descriptores de archivo para `select`
-        FD_ZERO(&readfds);
-        FD_SET(sockfdA, &readfds);
-        FD_SET(sockfdB, &readfds);
+        perror("select");
+        return 1;
+    }
 
-        // Establecer el descriptor máximo
-        max_sd = (sockfdA > sockfdB) ? sockfdA : sockfdB;
-
-        // Usar `select` para esperar datos en ambos sockets
-        int activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
-        if (activity < 0)
+    // Si hay datos disponibles en el socket A
+    if (FD_ISSET(sockfdA, &readfds))
+    {
+        saddr_size = sizeof(saddr);
+        numbytes = recvfrom(sockfdA, recvbuf, BUF_SIZ, 0, &saddr, (socklen_t *)&saddr_size);
+        if (numbytes > 0)
         {
-            perror("select");
-            break;
-        }
-
-        // Si hay datos disponibles en el socket A
-        if (FD_ISSET(sockfdA, &readfds))
-        {
-            saddr_size = sizeof(saddr);
-            numbytes = recvfrom(sockfdA, recvbuf, BUF_SIZ, 0, &saddr, (socklen_t *)&saddr_size);
-            if (numbytes > 0)
+            // Verificar que el paquete no provenga de la misma interfaz
+            if (memcmp(eh->ether_dhost, if_macA.ifr_hwaddr.sa_data, ETH_ALEN) != 0)
             {
-                // Verificar que el paquete no provenga de la misma interfaz
-                if (memcmp(eh->ether_dhost, if_macA.ifr_hwaddr.sa_data, ETH_ALEN) != 0)
-                {
-                    printf("Recibido paquete en subred A.\n");
-                    memcpy(sendbuf, recvbuf, numbytes);
-                    // Enviar a subred B
-                    socket_address.sll_ifindex = if_idxB.ifr_ifindex;
-                    socket_address.sll_halen = ETH_ALEN;
-                    memcpy(socket_address.sll_addr, eh->ether_dhost, 6);
+                printf("Recibido paquete en subred A.\n");
+                memcpy(sendbuf, recvbuf, numbytes);
+                // Enviar a subred B
+                socket_address.sll_ifindex = if_idxB.ifr_ifindex;
+                socket_address.sll_halen = ETH_ALEN;
+                memcpy(socket_address.sll_addr, eh->ether_dhost, 6);
 
-                    sendto(sockfdB, sendbuf, numbytes, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
-                    printf("Paquete reenviado a subred B.\n");
-                }
-            }
-        }
-
-        // Si hay datos disponibles en el socket B
-        if (FD_ISSET(sockfdB, &readfds))
-        {
-            saddr_size = sizeof(saddr);
-            numbytes = recvfrom(sockfdB, recvbuf, BUF_SIZ, 0, &saddr, (socklen_t *)&saddr_size);
-            if (numbytes > 0)
-            {
-                // Verificar que el paquete no provenga de la misma interfaz
-                if (memcmp(eh->ether_dhost, if_macB.ifr_hwaddr.sa_data, ETH_ALEN) != 0)
-                {
-                    printf("Recibido paquete en subred B.\n");
-                    memcpy(sendbuf, recvbuf, numbytes);
-                    // Enviar a subred A
-                    socket_address.sll_ifindex = if_idxA.ifr_ifindex;
-                    socket_address.sll_halen = ETH_ALEN;
-                    memcpy(socket_address.sll_addr, eh->ether_dhost, 6);
-
-                    sendto(sockfdA, sendbuf, numbytes, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
-                    printf("Paquete reenviado a subred A.\n");
-                }
+                sendto(sockfdB, sendbuf, numbytes, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
+                printf("Paquete reenviado a subred B.\n");
             }
         }
     }
 
+    // Si hay datos disponibles en el socket B
+    if (FD_ISSET(sockfdB, &readfds))
+    {
+        saddr_size = sizeof(saddr);
+        numbytes = recvfrom(sockfdB, recvbuf, BUF_SIZ, 0, &saddr, (socklen_t *)&saddr_size);
+        if (numbytes > 0)
+        {
+            // Verificar que el paquete no provenga de la misma interfaz
+            if (memcmp(eh->ether_dhost, if_macB.ifr_hwaddr.sa_data, ETH_ALEN) != 0)
+            {
+                printf("Recibido paquete en subred B.\n");
+                memcpy(sendbuf, recvbuf, numbytes);
+                // Enviar a subred A
+                socket_address.sll_ifindex = if_idxA.ifr_ifindex;
+                socket_address.sll_halen = ETH_ALEN;
+                memcpy(socket_address.sll_addr, eh->ether_dhost, 6);
+
+                sendto(sockfdA, sendbuf, numbytes, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
+                printf("Paquete reenviado a subred A.\n");
+            }
+        }
+    }
+
+    // Cerrar los sockets después de procesar un solo par de mensajes
     close(sockfdA);
     close(sockfdB);
 

@@ -9,6 +9,24 @@
 
 #define TYPE_REQUEST 0x01
 #define TYPE_RESPONSE 0x02
+#define ETH_ALEN 6
+
+// Agregar un ID único a cada mensaje
+static int message_id = 0;
+
+// Lista para almacenar los IDs de mensajes recibidos
+static int received_ids[100];
+static int received_count = 0;
+
+// Función para verificar si el ID del mensaje ya ha sido procesado
+int has_already_responded(int msg_id) {
+    for (int i = 0; i < received_count; i++) {
+        if (received_ids[i] == msg_id) {
+            return 1; // Ya ha sido procesado
+        }
+    }
+    return 0; // No ha sido procesado
+}
 
 int main(int argc, char *argv[])
 {
@@ -32,7 +50,7 @@ int main(int argc, char *argv[])
     char *name = argv[2];
     char *subnet = argv[3];
 
-    // Inicialización
+    // Inicialización del socket
     if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
     {
         perror("socket");
@@ -87,9 +105,14 @@ int main(int argc, char *argv[])
             memset(eh->ether_dhost, 0xff, 6); // Broadcast
             eh->ether_type = htons(0x1234);  // Tipo personalizado
 
+            // Generar el ID único para el mensaje
+            unsigned char msg_id = message_id++;
+
             // Agregar datos
             int offset = sizeof(struct ether_header);
             sendbuf[offset] = TYPE_REQUEST;
+            offset += 1;
+            sendbuf[offset] = msg_id; // Agregar ID al mensaje
             offset += 1;
             strcpy(sendbuf + offset, name); // Origen
             offset += strlen(name) + 1;
@@ -131,6 +154,9 @@ int main(int argc, char *argv[])
                 unsigned char msg_type = recvbuf[offset];
                 offset += 1;
 
+                unsigned char msg_id = recvbuf[offset];  // ID del mensaje
+                offset += 1;
+
                 char sender[MAX_NAME_LEN], recipient[MAX_NAME_LEN];
                 strcpy(sender, recvbuf + offset);
                 offset += strlen(sender) + 1;
@@ -143,17 +169,25 @@ int main(int argc, char *argv[])
                     {
                         printf("Solicitud recibida de %s. Respondiendo...\n", sender);
 
-                        // Responder
-                        memcpy(eh->ether_dhost, eh->ether_shost, 6);
-                        memcpy(eh->ether_shost, local_mac, 6);
-
-                        recvbuf[sizeof(struct ether_header)] = TYPE_RESPONSE;
-                        strcpy(recvbuf + sizeof(struct ether_header) + 1, name);
-                        strcpy(recvbuf + sizeof(struct ether_header) + 1 + strlen(name) + 1, sender);
-
-                        if (sendto(sockfd, recvbuf, numbytes, 0, &saddr, saddr_size) < 0)
+                        // Verificar si ya se respondió a este mensaje
+                        if (!has_already_responded(msg_id))
                         {
-                            perror("sendto");
+                            // Procesar y responder
+                            memcpy(eh->ether_dhost, eh->ether_shost, 6);
+                            memcpy(eh->ether_shost, local_mac, 6);
+
+                            recvbuf[sizeof(struct ether_header)] = TYPE_RESPONSE;
+                            recvbuf[sizeof(struct ether_header) + 1] = msg_id; // Incluir ID en la respuesta
+                            strcpy(recvbuf + sizeof(struct ether_header) + 2, name);
+                            strcpy(recvbuf + sizeof(struct ether_header) + 2 + strlen(name) + 1, sender);
+
+                            if (sendto(sockfd, recvbuf, numbytes, 0, &saddr, saddr_size) < 0)
+                            {
+                                perror("sendto");
+                            }
+
+                            // Registrar el ID como procesado
+                            received_ids[received_count++] = msg_id;
                         }
                     }
                     else if (msg_type == TYPE_RESPONSE)

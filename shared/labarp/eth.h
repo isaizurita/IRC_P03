@@ -23,7 +23,7 @@
 #endif
 
 #ifndef MAX_NAME_LEN
-#define MAX_NAME_LEN 50
+#define MAX_NAME_LEN 100
 #endif
 
 /* Tipos de tramas */
