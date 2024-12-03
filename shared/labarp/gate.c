@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
             // Verificar que el paquete no provenga de la misma interfaz
             if (memcmp(eh->ether_dhost, if_macA.ifr_hwaddr.sa_data, ETH_ALEN) != 0)
             {
-                printf("Recibido paquete en subred A.\n");
+                printf("Paquete recibido.\n");
                 memcpy(sendbuf, recvbuf, numbytes);
                 // Enviar a subred B
                 socket_address.sll_ifindex = if_idxB.ifr_ifindex;
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
                 memcpy(socket_address.sll_addr, eh->ether_dhost, 6);
 
                 sendto(sockfdB, sendbuf, numbytes, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
-                printf("Paquete reenviado a subred B.\n");
+                printf("Paquete reenviado.\n");
             }
         }
     }
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
             // Verificar que el paquete no provenga de la misma interfaz
             if (memcmp(eh->ether_dhost, if_macB.ifr_hwaddr.sa_data, ETH_ALEN) != 0)
             {
-                printf("Recibido paquete en subred B.\n");
+                printf("Respuesta recibida.\n");
                 memcpy(sendbuf, recvbuf, numbytes);
                 // Enviar a subred A
                 socket_address.sll_ifindex = if_idxA.ifr_ifindex;
@@ -131,7 +131,7 @@ int main(int argc, char *argv[])
                 memcpy(socket_address.sll_addr, eh->ether_dhost, 6);
 
                 sendto(sockfdA, sendbuf, numbytes, 0, (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll));
-                printf("Paquete reenviado a subred A.\n");
+                printf("Respuesta reenviada.\n");
             }
         }
     }
